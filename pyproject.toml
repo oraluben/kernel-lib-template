@@ -1,0 +1,58 @@
+[project]
+name = "klib"
+dynamic = ["version"]
+dependencies = ["apache-tvm-ffi", "torch>=2.4.0"]
+
+[build-system]
+requires = ["scikit-build-core", "apache-tvm-ffi"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+wheel.packages = ["klib"]
+
+metadata.version.provider = "version_with_meta"
+metadata.version.provider-path = "."
+experimental = true
+build-dir = "build"
+
+wheel.py-api = "cp38"
+cmake.version = ">=3.26.1"
+
+wheel.exclude = ["*.cu", "*.h", "*.cuh", "*.cc"]
+
+[tool.cibuildwheel]
+archs = ["auto64"]
+# Pin to glibc 2.17 for x86 and 2.28 for aarch64 for now
+manylinux-x86_64-image = "manylinux2014"
+manylinux-aarch64-image = "manylinux_2_28"
+skip = "*musllinux*"
+build = "cp38-*"
+environment-pass = ["CUDA_VERSION"]
+
+[tool.cibuildwheel.linux]
+repair-wheel-command = [
+    "auditwheel repair --exclude libtvm_ffi.so --exclude libcuda.so.1 --exclude '/usr/local/cuda*' -w {dest_dir} {wheel}",
+    "pipx run abi3audit --strict --report {wheel}",
+]
+environment.PATH = "/usr/local/cuda/bin:$PATH"
+# Install CUDA runtime and stub driver library
+# manylinux_2_28 uses gcc 14, which needs CUDA 12.8
+before-all = """
+set -eux
+
+case "$(uname -m)" in
+    "x86_64")
+        yum-config-manager --add-repo https://developer.download.nvidia.cn/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo
+        ;;
+    "aarch64")
+        dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/sbsa/cuda-rhel8.repo
+        ;;
+    *)
+        exit 1
+        ;;
+esac
+
+cudaver="$(echo "${CUDA_VERSION:-"12.4"}" | cut -d '.' -f-2)"
+v="${cudaver//./-}"
+yum install -y "cuda-minimal-build-${v}" "cuda-driver-devel-${v}" "cuda-nvrtc-devel-${v}"
+"""
