@@ -1,20 +1,12 @@
 cmake_minimum_required(VERSION 3.26 FATAL_ERROR)
-project(bitforge LANGUAGES CXX)
+project(bitforge LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
+set(CMAKE_CUDA_RUNTIME_LIBRARY None)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-if(NOT DEFINED ENV{CUDA_PATH} AND NOT DEFINED ENV{CUDACXX})
-  find_program(NVCC_FOUND nvcc)
-  if(NOT NVCC_FOUND)
-    message(FATAL_ERROR "No nvcc in PATH or CUDA_PATH or CUDACXX defined")
-  endif()
-endif()
-
-set(CMAKE_CUDA_ARCHITECTURES 70;75;80;86;89;90)
-
-enable_language(CUDA)
+set(CMAKE_CUDA_ARCHITECTURES 80;86;89;90)
 
 find_package(CUDAToolkit REQUIRED)
 include_directories(${CUDAToolkit_INCLUDE_DIRS})
