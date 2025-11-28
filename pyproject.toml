@@ -16,14 +16,14 @@ experimental = true
 build-dir = "build"
 
 wheel.py-api = "cp38"
-cmake.version = ">=3.26.1"
+cmake.version = ">=3.27"
 
 wheel.exclude = ["*.cu", "*.h", "*.cuh", "*.cc"]
 
 [tool.cibuildwheel]
 archs = ["auto64"]
 # Pin to glibc 2.17 for x86 and 2.28 for aarch64 for now
-manylinux-x86_64-image = "manylinux2014"
+manylinux-x86_64-image = "manylinux_2_28"
 manylinux-aarch64-image = "manylinux_2_28"
 skip = "*musllinux*"
 build = "cp38-*"
@@ -42,7 +42,7 @@ set -eux
 
 case "$(uname -m)" in
     "x86_64")
-        yum-config-manager --add-repo https://developer.download.nvidia.cn/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo
+        dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo
         ;;
     "aarch64")
         dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/sbsa/cuda-rhel8.repo
@@ -54,5 +54,5 @@ esac
 
 cudaver="$(echo "${CUDA_VERSION:-"12.4"}" | cut -d '.' -f-2)"
 v="${cudaver//./-}"
-yum install -y "cuda-minimal-build-${v}" "cuda-driver-devel-${v}" "cuda-nvrtc-devel-${v}"
+yum install -y "cuda-minimal-build-${v}" "cuda-driver-devel-${v}" "cuda-nvrtc-devel-${v}" nvidia-driver-cuda-libs
 """

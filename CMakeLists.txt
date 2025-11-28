@@ -1,8 +1,9 @@
-cmake_minimum_required(VERSION 3.26 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
 project(bitforge LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
+# set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_CUDA_RUNTIME_LIBRARY None)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -31,7 +32,22 @@ endif()
 
 include_directories(klib/ops/include)
 
-add_library(add_ffi SHARED klib/ops/add/add_kernel.cu)
-target_link_libraries(add_ffi PRIVATE tvm_ffi_shared)
+add_library(add_fb OBJECT klib/ops/add/add_kernel.cu)
+set_target_properties(add_fb PROPERTIES CUDA_FATBIN_COMPILATION ON)
+
+get_filename_component(ADD_ABS "klib/ops/add/add_kernel.cu" ABSOLUTE)
+get_filename_component(ADD_DIR "${ADD_ABS}" DIRECTORY)
+
+add_custom_command(
+    OUTPUT ${ADD_DIR}/add_kernel.h
+    COMMAND bin2c -c
+            $<TARGET_OBJECTS:add_fb> > ${ADD_DIR}/add_kernel.h
+    DEPENDS $<TARGET_OBJECTS:add_fb>
+    COMMENT "Embedding fatbins into header file"
+    VERBATIM
+)
+
+add_library(add_ffi SHARED klib/ops/add/add_kernel.cc ${ADD_DIR}/add_kernel.h)
+target_link_libraries(add_ffi PRIVATE tvm_ffi_shared cuda)
 set_target_properties(add_ffi PROPERTIES PREFIX "" SUFFIX ".so")
 install(TARGETS add_ffi LIBRARY DESTINATION klib/ops)
