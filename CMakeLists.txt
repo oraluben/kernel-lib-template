@@ -51,3 +51,8 @@ add_library(add_ffi SHARED klib/ops/add/add_kernel.cc ${ADD_DIR}/add_kernel.h)
 target_link_libraries(add_ffi PRIVATE tvm_ffi_shared cuda)
 set_target_properties(add_ffi PROPERTIES PREFIX "" SUFFIX ".so")
 install(TARGETS add_ffi LIBRARY DESTINATION klib/ops)
+
+add_library(alloc_ffi SHARED klib/ops/alloc/alloc_kernel.cc)
+target_link_libraries(alloc_ffi PRIVATE tvm_ffi_shared cuda)
+set_target_properties(alloc_ffi PROPERTIES PREFIX "" SUFFIX ".so")
+install(TARGETS alloc_ffi LIBRARY DESTINATION klib/ops)

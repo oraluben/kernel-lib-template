@@ -4,3 +4,5 @@ wheelhouse/
 **/__pycache__
 
 klib/ops/add/add_kernel.h
+
+.cache/

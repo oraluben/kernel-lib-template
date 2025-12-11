@@ -22,3 +22,7 @@ def load_ffi_lib(name: str):
 
 def add(i):
     load_ffi_lib("add_ffi.so").add(i)
+
+
+def alloc(t):
+    return load_ffi_lib("alloc_ffi.so").empty_like(t)

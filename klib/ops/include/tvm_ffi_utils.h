@@ -1,6 +1,19 @@
 #pragma once
 
 #include <tvm/ffi/container/tensor.h>
+#include <tvm/ffi/extra/c_env_api.h>
+
+#include <dlpack/dlpack.h>
+
+static tvm::ffi::Tensor empty(const tvm::ffi::ShapeView& shape, DLDataType dtype, DLDevice device) {
+    const tvm::ffi::Tensor& out = tvm::ffi::Tensor::FromEnvAlloc(
+        TVMFFIEnvTensorAlloc, shape, dtype, device
+    );
+
+    return out;
+}
+
+#include <tvm/ffi/container/tensor.h>
 #include <tvm/ffi/error.h>
 #include <tvm/ffi/extra/c_env_api.h>
 
@@ -12,11 +25,15 @@ constexpr DLDataType dl_float16 = DLDataType{kDLFloat, 16, 1};
 constexpr DLDataType dl_float32 = DLDataType{kDLFloat, 32, 1};
 constexpr DLDataType dl_float64 = DLDataType{kDLFloat, 64, 1};
 constexpr DLDataType dl_bfloat16 = DLDataType{kDLBfloat, 16, 1};
+constexpr DLDataType dl_int32 = DLDataType{kDLInt, 32, 1};
+constexpr DLDataType dl_uint8 = DLDataType{kDLUInt, 8, 1};
+
 
 constexpr int64_t float16_code = encode_dlpack_dtype(dl_float16);
 constexpr int64_t float32_code = encode_dlpack_dtype(dl_float32);
 constexpr int64_t float64_code = encode_dlpack_dtype(dl_float64);
 constexpr int64_t bfloat16_code = encode_dlpack_dtype(dl_bfloat16);
+constexpr int64_t int32_code = encode_dlpack_dtype(dl_int32);
 
 #define _DISPATCH_CASE_F16(c_type, ...) \
     case float16_code: {                \

@@ -1,0 +1,23 @@
+{
+    "image": "oraluben/manylinux_2_28",
+    "mounts": [
+        // "source=<path-to-tvm-ffi>/tvm-ffi,target=/tvm-ffi,type=bind,consistency=cached"
+    ],
+    "containerEnv": {
+        "PIP_INDEX_URL": "https://mirrors.bfsu.edu.cn/pypi/web/simple"
+    },
+    "postCreateCommand": "python3.12 -mvenv /venv",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "eamodio.gitlens",
+                "twxs.cmake",
+                "llvm-vs-code-extensions.vscode-clangd"
+            ],
+            "settings": {
+                "python.defaultInterpreterPath": "/venv/bin/python"
+            }
+        }
+    }
+}
