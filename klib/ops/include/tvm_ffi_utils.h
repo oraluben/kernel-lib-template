@@ -5,14 +5,6 @@
 
 #include <dlpack/dlpack.h>
 
-static tvm::ffi::Tensor empty(const tvm::ffi::ShapeView& shape, DLDataType dtype, DLDevice device) {
-    const tvm::ffi::Tensor& out = tvm::ffi::Tensor::FromEnvAlloc(
-        TVMFFIEnvTensorAlloc, shape, dtype, device
-    );
-
-    return out;
-}
-
 #include <tvm/ffi/container/tensor.h>
 #include <tvm/ffi/error.h>
 #include <tvm/ffi/extra/c_env_api.h>
