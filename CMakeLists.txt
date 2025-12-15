@@ -32,17 +32,13 @@ endif()
 
 include_directories(klib/ops/include)
 
-add_library(add_fb OBJECT klib/ops/add/add_kernel.cu)
-set_target_properties(add_fb PROPERTIES CUDA_FATBIN_COMPILATION ON)
-
-get_filename_component(ADD_ABS "klib/ops/add/add_kernel.cu" ABSOLUTE)
-get_filename_component(ADD_DIR "${ADD_ABS}" DIRECTORY)
+add_tvm_ffi_fatbin(add CUDA klib/ops/add/add_kernel.cu)
 
 add_custom_command(
     OUTPUT ${ADD_DIR}/add_kernel.h
     COMMAND bin2c -c
-            $<TARGET_OBJECTS:add_fb> > ${ADD_DIR}/add_kernel.h
-    DEPENDS $<TARGET_OBJECTS:add_fb>
+            $<TARGET_OBJECTS:add> > ${ADD_DIR}/add_kernel.h
+    DEPENDS $<TARGET_OBJECTS:add>
     COMMENT "Embedding fatbins into header file"
     VERBATIM
 )

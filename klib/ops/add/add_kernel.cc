@@ -1,27 +1,28 @@
 #include <cuda.h>
 
 #include <tvm/ffi/container/tensor.h>
+#include <tvm/ffi/extra/cuda/cubin_launcher.h>
 
+#include "driver_types.h"
 #include "tvm_ffi_utils.h"
 
 #include "add_kernel.h"
 
+#define TVM_FFI_EMBED_CUBIN_v2(name, imageBytes)      \
+  namespace {                                  \
+  struct EmbedCubinModule_##name {             \
+    tvm::ffi::CubinModule mod{imageBytes};     \
+    static EmbedCubinModule_##name* Global() { \
+      static EmbedCubinModule_##name inst;     \
+      return &inst;                            \
+    }                                          \
+  };                                           \
+  } /* anonymous namespace */
+
+TVM_FFI_EMBED_CUBIN_v2(my_cubin, imageBytes);
+
 void add_kernel(const tvm::ffi::TensorView& input) {
-    CUresult res;
-
-    CUmodule module;
-    res = cuModuleLoadFatBinary(&module, imageBytes);
-    if (res != CUDA_SUCCESS) {
-        std::cerr << "Failed to load fatbin! Error code: " << res << std::endl;
-        return;
-    }
-
-    CUfunction kernel;
-    res = cuModuleGetFunction(&kernel, module, "AddOneKernel");
-    if (res != CUDA_SUCCESS) {
-        std::cerr << "Failed to load kernel! Error code: " << res << std::endl;
-        return;
-    }
+    static auto kernel = TVM_FFI_EMBED_CUBIN_GET_KERNEL(my_cubin, "AddOneKernel");
 
     void* input_ptr = input.data_ptr();
     void *args[] = { &input_ptr };
@@ -33,15 +34,11 @@ void add_kernel(const tvm::ffi::TensorView& input) {
 
     CUstream stream = static_cast<CUstream>(TVMFFIEnvGetStream(input.device().device_type, input.device().device_id));
 
-    cuLaunchKernel(
-        kernel,
-        blocksPerGrid, 1, 1,
-        threadsPerBlock, 1, 1,
-        0,
-        stream,
-        args,
-        NULL
-    );
+    tvm::ffi::dim3 grid((N + threadsPerBlock - 1) / threadsPerBlock);
+    tvm::ffi::dim3 block(256);
+
+    cudaError_t result = kernel.Launch(args, grid, block, stream);
+    TVM_FFI_CHECK_CUDA_ERROR(result);
 }
 
 
