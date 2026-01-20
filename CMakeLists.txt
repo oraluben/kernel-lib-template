@@ -38,21 +38,13 @@ set_target_properties(add_fb PROPERTIES CUDA_FATBIN_COMPILATION ON)
 get_filename_component(ADD_ABS "klib/ops/add/add_kernel.cu" ABSOLUTE)
 get_filename_component(ADD_DIR "${ADD_ABS}" DIRECTORY)
 
-add_custom_command(
-    OUTPUT ${ADD_DIR}/add_kernel.h
-    COMMAND bin2c -c
-            $<TARGET_OBJECTS:add_fb> > ${ADD_DIR}/add_kernel.h
-    DEPENDS $<TARGET_OBJECTS:add_fb>
-    COMMENT "Embedding fatbins into header file"
-    VERBATIM
-)
-
 add_library(add_ffi SHARED klib/ops/add/add_kernel.cc ${ADD_DIR}/add_kernel.h)
-target_link_libraries(add_ffi PRIVATE tvm_ffi_shared cuda)
+target_link_libraries(add_ffi PRIVATE tvm_ffi::header tvm_ffi::shared cuda)
 set_target_properties(add_ffi PROPERTIES PREFIX "" SUFFIX ".so")
+tvm_ffi_embed_bin_into(add_ffi SYMBOL env BIN "$<TARGET_OBJECTS:add_fb>")
 install(TARGETS add_ffi LIBRARY DESTINATION klib/ops)
 
 add_library(alloc_ffi SHARED klib/ops/alloc/alloc_kernel.cc)
-target_link_libraries(alloc_ffi PRIVATE tvm_ffi_shared cuda)
+target_link_libraries(alloc_ffi PRIVATE tvm_ffi::shared cuda)
 set_target_properties(alloc_ffi PROPERTIES PREFIX "" SUFFIX ".so")
 install(TARGETS alloc_ffi LIBRARY DESTINATION klib/ops)
