@@ -1,4 +1,9 @@
 cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
+
+# Detect pip-installed CUDA toolkit (nvidia-cuda-nvcc, nvidia-cuda-cccl)
+# before enabling the CUDA language, so CMake can find nvcc automatically.
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/FindPipCUDAToolkit.cmake)
+
 project(bitforge LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -11,6 +16,10 @@ set(CMAKE_CUDA_ARCHITECTURES 80;86;89;90)
 
 find_package(CUDAToolkit REQUIRED)
 include_directories(${CUDAToolkit_INCLUDE_DIRS})
+
+if(_PIP_CUDA_STUBS_DIR)
+  link_directories(${_PIP_CUDA_STUBS_DIR})
+endif()
 
 find_program(CCACHE_FOUND ccache)
 if(CCACHE_FOUND)

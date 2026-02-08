@@ -3,6 +3,9 @@ name = "klib"
 dynamic = ["version"]
 dependencies = ["apache-tvm-ffi", "torch>=2.4.0"]
 
+[project.optional-dependencies]
+cuda = ["nvidia-cuda-nvcc", "nvidia-cuda-cccl"]
+
 [build-system]
 requires = ["scikit-build-core", "apache-tvm-ffi>=0.1.8.post2"]
 build-backend = "scikit_build_core.build"
