@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
 
-# Detect pip-installed CUDA toolkit (nvidia-cuda-nvcc, nvidia-cuda-cccl)
-# before enabling the CUDA language, so CMake can find nvcc automatically.
-# Requires -DWITH_PIP_NVCC=ON to activate.
+# Detect pip-installed CUDA toolkit (nvidia-cuda-nvcc, nvidia-cuda-cccl).
+# Activated by env WITH_PIP_CUDA_TOOLCHAIN=<path> or auto-detected from
+# the current Python environment (for --no-build-isolation builds).
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/FindPipCUDAToolkit.cmake)
 
 project(bitforge LANGUAGES CXX CUDA)
@@ -45,28 +45,11 @@ include_directories(klib/ops/include)
 add_library(add_fb OBJECT klib/ops/add/add_kernel.cu)
 set_target_properties(add_fb PROPERTIES CUDA_FATBIN_COMPILATION ON)
 
-get_filename_component(ADD_ABS "klib/ops/add/add_kernel.cu" ABSOLUTE)
-get_filename_component(ADD_DIR "${ADD_ABS}" DIRECTORY)
-
-# Locate bin2c from the CUDA toolkit
-find_program(BIN2C_EXE bin2c
-  HINTS ${CUDAToolkit_BIN_DIR} ${CUDAToolkit_ROOT}/bin
-  REQUIRED
-)
-
-# Generate add_kernel.h from the fatbin using bin2c.
-# bin2c writes to stdout, so shell redirection is needed.
-add_custom_command(
-  OUTPUT ${ADD_DIR}/add_kernel.h
-  COMMAND ${BIN2C_EXE} -c -n add_kernel_fatbin "$<TARGET_OBJECTS:add_fb>" > "${ADD_DIR}/add_kernel.h"
-  DEPENDS add_fb
-  COMMENT "Generating add_kernel.h via bin2c"
-)
-
-add_library(add_ffi SHARED klib/ops/add/add_kernel.cc ${ADD_DIR}/add_kernel.h)
+add_library(add_ffi SHARED klib/ops/add/add_kernel.cc)
 add_dependencies(add_ffi add_fb)
 target_link_libraries(add_ffi PRIVATE tvm_ffi::header tvm_ffi::shared cuda)
 set_target_properties(add_ffi PROPERTIES PREFIX "" SUFFIX ".so")
+tvm_ffi_embed_bin_into(add_ffi SYMBOL env BIN "$<TARGET_OBJECTS:add_fb>")
 install(TARGETS add_ffi LIBRARY DESTINATION klib/ops)
 
 add_library(alloc_ffi SHARED klib/ops/alloc/alloc_kernel.cc)

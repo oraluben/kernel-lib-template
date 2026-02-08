@@ -4,7 +4,5 @@ CMakeFiles/
 
 **/__pycache__
 
-klib/ops/add/add_kernel.h
-
 .cache/
 _codeql_detected_source_root

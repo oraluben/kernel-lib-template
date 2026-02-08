@@ -4,56 +4,72 @@
 #   pip install nvidia-cuda-nvcc nvidia-cuda-cccl
 #
 # This module should be included BEFORE project() to set CMAKE_CUDA_COMPILER.
-# It uses the Python interpreter to locate the pip-installed nvidia packages.
 #
-# Usage: cmake -DWITH_PIP_NVCC=ON ..
+# Detection order:
+#   1. If system/host CUDA is already available (nvcc on PATH, CUDACXX set,
+#      or /usr/local/cuda exists), use that and skip pip detection.
+#   2. If env var WITH_PIP_CUDA_TOOLCHAIN is set to a path (e.g., .../cu13),
+#      use that directory directly as the CUDA toolkit root.
+#   3. Otherwise, try auto-detecting from the current Python environment's
+#      site-packages (works with --no-build-isolation).
 #
 # The module sets the following variables when pip CUDA is found:
-#   CMAKE_CUDA_COMPILER  - path to nvcc
-#   CUDAToolkit_ROOT     - root of the CUDA toolkit
+#   CMAKE_CUDA_COMPILER     - path to nvcc
+#   CUDAToolkit_ROOT        - root of the CUDA toolkit
 #   CUDAToolkit_INCLUDE_DIRS - include directories (toolkit + cccl)
+#   _PIP_CUDA_STUBS_DIR     - path to linker stubs
 
-if(NOT WITH_PIP_NVCC)
-  return()
-endif()
-
+# Skip if system CUDA is already available.
 if(CMAKE_CUDA_COMPILER OR DEFINED ENV{CUDACXX} OR EXISTS "/usr/local/cuda/bin/nvcc")
   return()
 endif()
 
-find_program(_PIP_CUDA_PYTHON_EXE NAMES python3 python)
+# --- Strategy 1: explicit path via env var ---
+if(DEFINED ENV{WITH_PIP_CUDA_TOOLCHAIN})
+  set(_PIP_CUDA_ROOT "$ENV{WITH_PIP_CUDA_TOOLCHAIN}")
+  set(_PIP_CUDA_NVCC "${_PIP_CUDA_ROOT}/bin/nvcc")
+  if(NOT EXISTS "${_PIP_CUDA_NVCC}")
+    message(FATAL_ERROR
+      "FindPipCUDAToolkit: WITH_PIP_CUDA_TOOLCHAIN is set to '${_PIP_CUDA_ROOT}' "
+      "but nvcc was not found at '${_PIP_CUDA_NVCC}'")
+  endif()
+  message(STATUS "FindPipCUDAToolkit: using env WITH_PIP_CUDA_TOOLCHAIN=${_PIP_CUDA_ROOT}")
+else()
+  # --- Strategy 2: auto-detect from current Python env ---
+  find_program(_PIP_CUDA_PYTHON_EXE NAMES python3 python)
+  if(NOT _PIP_CUDA_PYTHON_EXE)
+    return()
+  endif()
 
-if(NOT _PIP_CUDA_PYTHON_EXE)
-  return()
+  execute_process(
+    COMMAND "${_PIP_CUDA_PYTHON_EXE}" "${CMAKE_CURRENT_LIST_DIR}/find_pip_cuda.py"
+    OUTPUT_VARIABLE _PIP_CUDA_OUTPUT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE _PIP_CUDA_RESULT
+  )
+
+  if(NOT _PIP_CUDA_RESULT EQUAL 0)
+    message(STATUS "FindPipCUDAToolkit: pip-installed CUDA toolkit not found")
+    return()
+  endif()
+
+  string(JSON _PIP_CUDA_NVCC GET "${_PIP_CUDA_OUTPUT}" "nvcc")
+  string(JSON _PIP_CUDA_ROOT GET "${_PIP_CUDA_OUTPUT}" "root")
+  message(STATUS "FindPipCUDAToolkit: auto-detected from Python environment")
 endif()
 
-execute_process(
-  COMMAND "${_PIP_CUDA_PYTHON_EXE}" "${CMAKE_CURRENT_LIST_DIR}/find_pip_cuda.py"
-  OUTPUT_VARIABLE _PIP_CUDA_OUTPUT
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-  RESULT_VARIABLE _PIP_CUDA_RESULT
-)
-
-if(NOT _PIP_CUDA_RESULT EQUAL 0)
-  message(STATUS "FindPipCUDAToolkit: pip-installed CUDA toolkit not found")
-  return()
-endif()
-
-string(JSON _PIP_CUDA_NVCC GET "${_PIP_CUDA_OUTPUT}" "nvcc")
-string(JSON _PIP_CUDA_ROOT GET "${_PIP_CUDA_OUTPUT}" "root")
-string(JSON _PIP_CUDA_INCLUDE GET "${_PIP_CUDA_OUTPUT}" "include")
-
+# --- Common setup for both strategies ---
 set(CMAKE_CUDA_COMPILER "${_PIP_CUDA_NVCC}" CACHE FILEPATH "CUDA compiler (from pip)" FORCE)
 set(CUDAToolkit_ROOT "${_PIP_CUDA_ROOT}" CACHE PATH "CUDA toolkit root (from pip)" FORCE)
-set(CUDAToolkit_INCLUDE_DIRS "${_PIP_CUDA_INCLUDE}" CACHE PATH "CUDA toolkit include (from pip)")
+set(CUDAToolkit_INCLUDE_DIRS "${_PIP_CUDA_ROOT}/include" CACHE PATH "CUDA toolkit include (from pip)")
 
 # Add library paths so the linker can find -lcuda and other CUDA libs
 list(APPEND CMAKE_LIBRARY_PATH "${_PIP_CUDA_ROOT}/lib/stubs" "${_PIP_CUDA_ROOT}/lib")
 set(_PIP_CUDA_STUBS_DIR "${_PIP_CUDA_ROOT}/lib/stubs" CACHE PATH "" FORCE)
 
-string(JSON _PIP_CUDA_CCCL_INCLUDE ERROR_VARIABLE _err GET "${_PIP_CUDA_OUTPUT}" "cccl_include")
-if(NOT _err)
-  list(APPEND CUDAToolkit_INCLUDE_DIRS "${_PIP_CUDA_CCCL_INCLUDE}")
+# Check for CCCL headers
+if(EXISTS "${_PIP_CUDA_ROOT}/include/cccl")
+  list(APPEND CUDAToolkit_INCLUDE_DIRS "${_PIP_CUDA_ROOT}/include/cccl")
 endif()
 
 message(STATUS "FindPipCUDAToolkit: using pip-installed CUDA toolkit")

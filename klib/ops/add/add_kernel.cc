@@ -6,9 +6,7 @@
 
 #include "tvm_ffi_utils.h"
 
-#include "add_kernel.h"
-
-TVM_FFI_EMBED_CUBIN_FROM_BYTES(env, add_kernel_fatbin);
+TVM_FFI_EMBED_CUBIN(env);
 
 void add_kernel(const tvm::ffi::TensorView &input) {
   static auto kernel = TVM_FFI_EMBED_CUBIN_GET_KERNEL(env, "AddOneKernel");
