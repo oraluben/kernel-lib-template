@@ -54,13 +54,13 @@ find_program(BIN2C_EXE bin2c
   REQUIRED
 )
 
-# Generate add_kernel.h from the fatbin using bin2c
+# Generate add_kernel.h from the fatbin using bin2c.
+# bin2c writes to stdout, so shell redirection is needed.
 add_custom_command(
   OUTPUT ${ADD_DIR}/add_kernel.h
   COMMAND ${BIN2C_EXE} -c -n add_kernel_fatbin "$<TARGET_OBJECTS:add_fb>" > "${ADD_DIR}/add_kernel.h"
   DEPENDS add_fb
   COMMENT "Generating add_kernel.h via bin2c"
-  VERBATIM
 )
 
 add_library(add_ffi SHARED klib/ops/add/add_kernel.cc ${ADD_DIR}/add_kernel.h)
