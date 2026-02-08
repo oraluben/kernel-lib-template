@@ -32,8 +32,10 @@ def _find_nvidia_cu_dir():
         ]
         if not cu_dirs:
             continue
-        # Use the highest versioned directory (e.g., cu13 over cu12)
-        cu_dir = os.path.join(nvidia_dir, sorted(cu_dirs)[-1])
+        # Use the highest versioned directory (e.g., cu13 over cu9)
+        cu_dir = os.path.join(
+            nvidia_dir, max(cu_dirs, key=lambda d: int(d[2:]))
+        )
         nvcc = os.path.join(cu_dir, "bin", "nvcc")
         if os.path.isfile(nvcc):
             return cu_dir

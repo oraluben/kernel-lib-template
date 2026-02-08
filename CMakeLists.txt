@@ -48,6 +48,7 @@ get_filename_component(ADD_ABS "klib/ops/add/add_kernel.cu" ABSOLUTE)
 get_filename_component(ADD_DIR "${ADD_ABS}" DIRECTORY)
 
 add_library(add_ffi SHARED klib/ops/add/add_kernel.cc ${ADD_DIR}/add_kernel.h)
+add_dependencies(add_ffi add_fb)
 target_link_libraries(add_ffi PRIVATE tvm_ffi::header tvm_ffi::shared cuda)
 set_target_properties(add_ffi PROPERTIES PREFIX "" SUFFIX ".so")
 tvm_ffi_embed_bin_into(add_ffi SYMBOL env BIN "$<TARGET_OBJECTS:add_fb>")
