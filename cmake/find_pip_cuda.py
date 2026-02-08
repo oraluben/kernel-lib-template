@@ -26,6 +26,7 @@ def main():
     ]
     if not cu_dirs:
         sys.exit(1)
+    # Use the highest versioned directory (e.g., cu13 over cu12)
     cu_dir = os.path.join(nvidia_dir, sorted(cu_dirs)[-1])
     nvcc = os.path.join(cu_dir, "bin", "nvcc")
     if not os.path.isfile(nvcc):
@@ -40,7 +41,8 @@ def main():
         result["cccl_include"] = cccl_include
 
     lib_dir = os.path.join(cu_dir, "lib")
-    # pip packages use lib/ but nvcc expects lib64/ on 64-bit; create symlink if needed
+    # pip packages use lib/ but nvcc expects lib64/ on 64-bit; create a relative
+    # symlink so paths work regardless of the absolute install location.
     lib64_dir = os.path.join(cu_dir, "lib64")
     if os.path.isdir(lib_dir) and not os.path.exists(lib64_dir):
         try:
@@ -60,8 +62,9 @@ def main():
                     pass
 
     # pip packages don't include the CUDA driver stub (libcuda.so).
-    # Create a minimal stub so that -lcuda linking succeeds at build time;
-    # at runtime the real driver is loaded via dlopen/RPATH.
+    # Create a minimal stub so that -lcuda linking succeeds at build time.
+    # Only the .so file needs to exist; the actual symbol is unused because
+    # the real libcuda.so from the GPU driver is loaded at runtime.
     stubs_dir = os.path.join(lib_dir, "stubs")
     stub_path = os.path.join(stubs_dir, "libcuda.so")
     if not os.path.exists(stub_path):
