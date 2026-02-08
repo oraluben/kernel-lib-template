@@ -5,3 +5,4 @@ CMakeFiles/
 **/__pycache__
 
 .cache/
+_codeql_detected_source_root
