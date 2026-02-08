@@ -6,7 +6,7 @@
 
 ```bash
 pip install nvidia-cuda-nvcc nvidia-cuda-cccl
-pip install . -v
+pip install . -v --no-build-isolation -Ccmake.define.WITH_PIP_NVCC=ON
 ```
 
 ### With host CUDA toolchain

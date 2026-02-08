@@ -6,10 +6,16 @@
 # This module should be included BEFORE project() to set CMAKE_CUDA_COMPILER.
 # It uses the Python interpreter to locate the pip-installed nvidia packages.
 #
+# Usage: cmake -DWITH_PIP_NVCC=ON ..
+#
 # The module sets the following variables when pip CUDA is found:
 #   CMAKE_CUDA_COMPILER  - path to nvcc
 #   CUDAToolkit_ROOT     - root of the CUDA toolkit
 #   CUDAToolkit_INCLUDE_DIRS - include directories (toolkit + cccl)
+
+if(NOT WITH_PIP_NVCC)
+  return()
+endif()
 
 if(CMAKE_CUDA_COMPILER OR DEFINED ENV{CUDACXX} OR EXISTS "/usr/local/cuda/bin/nvcc")
   return()
