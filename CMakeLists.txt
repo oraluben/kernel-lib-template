@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
 
-# Detect pip-installed CUDA toolkit (nvidia-cuda-nvcc, nvidia-cuda-cccl).
-# Activated by env WITH_PIP_CUDA_TOOLCHAIN=<path> or auto-detected from
-# the current Python environment (for --no-build-isolation builds).
+# Detect CUDA toolkit: tries host installation first, then falls back to
+# pip-installed packages (env WITH_PIP_CUDA_TOOLCHAIN or auto-detect).
+# Must be included before project() so CMAKE_CUDA_COMPILER is set.
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/FindPipCUDAToolkit.cmake)
 
 project(bitforge LANGUAGES CXX CUDA)
@@ -17,10 +17,7 @@ set(CMAKE_CUDA_ARCHITECTURES 80;86;89;90)
 
 find_package(CUDAToolkit REQUIRED)
 include_directories(${CUDAToolkit_INCLUDE_DIRS})
-
-if(_PIP_CUDA_STUBS_DIR)
-  link_directories(${_PIP_CUDA_STUBS_DIR})
-endif()
+link_directories(${CUDAToolkit_LIBRARY_DIR} ${CUDAToolkit_LIBRARY_DIR}/stubs)
 
 find_program(CCACHE_FOUND ccache)
 if(CCACHE_FOUND)

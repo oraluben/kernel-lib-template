@@ -4,105 +4,89 @@ Used by cmake/FindPipCUDAToolkit.cmake via ``execute_process``.
 Outputs a JSON object with paths on success, exits with code 1 on failure.
 """
 
-import glob
 import json
 import os
-import site
+import pathlib
 import subprocess
 import sys
-import tempfile
 
 
-def _find_nvidia_cu_dir():
-    """Search all site-packages directories for nvidia/cu*/bin/nvcc.
+def _find_cu_dir():
+    """Find the nvidia/cu<ver> directory from the nvidia pip package."""
+    try:
+        import nvidia
+    except ImportError:
+        return None
 
-    This works even when running inside pip's isolated build environment
-    because we scan the actual site-packages paths rather than relying on
-    importlib (which only sees the isolated env).
-    """
-    search_dirs = site.getsitepackages() + [site.getusersitepackages()]
-    for sp in search_dirs:
-        nvidia_dir = os.path.join(sp, "nvidia")
-        if not os.path.isdir(nvidia_dir):
-            continue
-        cu_dirs = [
-            d
-            for d in os.listdir(nvidia_dir)
-            if d.startswith("cu") and d[2:].isdigit()
-        ]
-        if not cu_dirs:
-            continue
-        # Use the highest versioned directory (e.g., cu13 over cu9)
-        cu_dir = os.path.join(
-            nvidia_dir, max(cu_dirs, key=lambda d: int(d[2:]))
-        )
-        nvcc = os.path.join(cu_dir, "bin", "nvcc")
-        if os.path.isfile(nvcc):
-            return cu_dir
+    nvidia_dir = pathlib.Path(nvidia.__path__[0])
+    cu_dirs = sorted(
+        (d for d in nvidia_dir.iterdir() if d.name[:2] == "cu" and d.name[2:].isdigit()),
+        key=lambda d: int(d.name[2:]),
+    )
+    if not cu_dirs:
+        return None
+    cu_dir = cu_dirs[-1]
+    if (cu_dir / "bin" / "nvcc").is_file():
+        return cu_dir
     return None
 
 
-def main():
-    result = {}
-    # nvidia-cuda-nvcc (v13+) installs nvcc under nvidia/cu<ver>/bin/
-    cu_dir = _find_nvidia_cu_dir()
-    if cu_dir is None:
-        sys.exit(1)
-    nvcc = os.path.join(cu_dir, "bin", "nvcc")
-    if not os.path.isfile(nvcc):
-        sys.exit(1)
-    result["nvcc"] = nvcc
-    result["root"] = cu_dir
-    result["include"] = os.path.join(cu_dir, "include")
+def _ensure_lib_symlinks(cu_dir):
+    """Create symlinks that CMake / nvcc expect but pip packages omit."""
+    lib_dir = cu_dir / "lib"
+    if not lib_dir.is_dir():
+        return
 
-    # Check for CCCL headers
-    cccl_include = os.path.join(cu_dir, "include", "cccl")
-    if os.path.isdir(cccl_include):
-        result["cccl_include"] = cccl_include
-
-    lib_dir = os.path.join(cu_dir, "lib")
-    # pip packages use lib/ but nvcc expects lib64/ on 64-bit; create a relative
-    # symlink so paths work regardless of the absolute install location.
-    lib64_dir = os.path.join(cu_dir, "lib64")
-    if os.path.isdir(lib_dir) and not os.path.exists(lib64_dir):
+    # nvcc expects lib64/ on 64-bit
+    lib64 = cu_dir / "lib64"
+    if not lib64.exists():
         try:
-            os.symlink("lib", lib64_dir)
+            lib64.symlink_to("lib")
         except OSError:
             pass
 
-    # pip packages may ship versioned .so (e.g., libcudart.so.13) without the
-    # unversioned symlink that CMake's FindCUDAToolkit expects (libcudart.so).
-    if os.path.isdir(lib_dir):
-        for versioned in glob.glob(os.path.join(lib_dir, "*.so.*")):
-            base = versioned.split(".so.")[0] + ".so"
-            if not os.path.exists(base):
-                try:
-                    os.symlink(os.path.basename(versioned), base)
-                except OSError:
-                    pass
-
-    # pip packages don't include the CUDA driver stub (libcuda.so).
-    # Create a minimal stub so that -lcuda linking succeeds at build time.
-    # Only the .so file needs to exist; the actual symbol is unused because
-    # the real libcuda.so from the GPU driver is loaded at runtime.
-    stubs_dir = os.path.join(lib_dir, "stubs")
-    stub_path = os.path.join(stubs_dir, "libcuda.so")
-    if not os.path.exists(stub_path):
-        os.makedirs(stubs_dir, exist_ok=True)
-        with tempfile.NamedTemporaryFile(suffix=".c", mode="w", delete=False) as f:
-            f.write("void cuGetErrorString(void){}\n")
-            f.flush()
+    # CMake expects unversioned .so (e.g., libcudart.so)
+    for so in lib_dir.glob("*.so.*"):
+        base = lib_dir / (so.name.split(".so.")[0] + ".so")
+        if not base.exists():
             try:
-                subprocess.check_call(
-                    ["gcc", "-shared", "-o", stub_path, f.name],
-                    stderr=subprocess.DEVNULL,
-                )
-            except Exception:
+                base.symlink_to(so.name)
+            except OSError:
                 pass
-            finally:
-                os.unlink(f.name)
 
-    print(json.dumps(result))
+
+def _ensure_cuda_stub(cu_dir):
+    """Create a minimal libcuda.so stub for build-time -lcuda linking."""
+    stubs_dir = cu_dir / "lib" / "stubs"
+    stub = stubs_dir / "libcuda.so"
+    if stub.exists():
+        return
+    stubs_dir.mkdir(parents=True, exist_ok=True)
+    src = stubs_dir / "_stub.c"
+    try:
+        src.write_text("void cuGetErrorString(void){}\n")
+        subprocess.check_call(
+            ["gcc", "-shared", "-o", str(stub), str(src)],
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+    finally:
+        src.unlink(missing_ok=True)
+
+
+def main():
+    cu_dir = _find_cu_dir()
+    if cu_dir is None:
+        sys.exit(1)
+
+    _ensure_lib_symlinks(cu_dir)
+    _ensure_cuda_stub(cu_dir)
+
+    print(json.dumps({
+        "nvcc": str(cu_dir / "bin" / "nvcc"),
+        "root": str(cu_dir),
+    }))
 
 
 if __name__ == "__main__":
