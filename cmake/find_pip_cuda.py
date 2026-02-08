@@ -2,10 +2,13 @@
 
 Used by cmake/FindPipCUDAToolkit.cmake via ``execute_process``.
 Outputs a JSON object with paths on success, exits with code 1 on failure.
+
+Usage:
+    python find_pip_cuda.py              # auto-detect from current env
+    python find_pip_cuda.py /path/to/cu13  # use explicit path, just prepare it
 """
 
 import json
-import os
 import pathlib
 import subprocess
 import sys
@@ -76,8 +79,14 @@ def _ensure_cuda_stub(cu_dir):
 
 
 def main():
-    cu_dir = _find_cu_dir()
-    if cu_dir is None:
+    if len(sys.argv) > 1:
+        # Explicit path provided — just prepare it
+        cu_dir = pathlib.Path(sys.argv[1])
+    else:
+        # Auto-detect from current Python environment
+        cu_dir = _find_cu_dir()
+
+    if cu_dir is None or not (cu_dir / "bin" / "nvcc").is_file():
         sys.exit(1)
 
     _ensure_lib_symlinks(cu_dir)
