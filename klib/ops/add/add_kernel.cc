@@ -6,8 +6,6 @@
 
 #include "tvm_ffi_utils.h"
 
-#include "add_kernel.h"
-
 TVM_FFI_EMBED_CUBIN(env);
 
 void add_kernel(const tvm::ffi::TensorView &input) {

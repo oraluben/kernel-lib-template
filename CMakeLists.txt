@@ -1,4 +1,10 @@
 cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
+
+# Detect CUDA toolkit: tries host installation first, then falls back to
+# pip-installed packages (env WITH_PIP_CUDA_TOOLCHAIN or auto-detect).
+# Must be included before project() so CMAKE_CUDA_COMPILER is set.
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/FindPipCUDAToolkit.cmake)
+
 project(bitforge LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -11,6 +17,7 @@ set(CMAKE_CUDA_ARCHITECTURES 80;86;89;90)
 
 find_package(CUDAToolkit REQUIRED)
 include_directories(${CUDAToolkit_INCLUDE_DIRS})
+link_directories(${CUDAToolkit_LIBRARY_DIR} ${CUDAToolkit_LIBRARY_DIR}/stubs)
 
 find_program(CCACHE_FOUND ccache)
 if(CCACHE_FOUND)
@@ -35,10 +42,8 @@ include_directories(klib/ops/include)
 add_library(add_fb OBJECT klib/ops/add/add_kernel.cu)
 set_target_properties(add_fb PROPERTIES CUDA_FATBIN_COMPILATION ON)
 
-get_filename_component(ADD_ABS "klib/ops/add/add_kernel.cu" ABSOLUTE)
-get_filename_component(ADD_DIR "${ADD_ABS}" DIRECTORY)
-
-add_library(add_ffi SHARED klib/ops/add/add_kernel.cc ${ADD_DIR}/add_kernel.h)
+add_library(add_ffi SHARED klib/ops/add/add_kernel.cc)
+add_dependencies(add_ffi add_fb)
 target_link_libraries(add_ffi PRIVATE tvm_ffi::header tvm_ffi::shared cuda)
 set_target_properties(add_ffi PROPERTIES PREFIX "" SUFFIX ".so")
 tvm_ffi_embed_bin_into(add_ffi SYMBOL env BIN "$<TARGET_OBJECTS:add_fb>")
