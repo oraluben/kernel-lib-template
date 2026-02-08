@@ -4,30 +4,48 @@ Used by cmake/FindPipCUDAToolkit.cmake via ``execute_process``.
 Outputs a JSON object with paths on success, exits with code 1 on failure.
 """
 
-import importlib.util
 import glob
 import json
 import os
+import site
 import subprocess
 import sys
 import tempfile
 
 
+def _find_nvidia_cu_dir():
+    """Search all site-packages directories for nvidia/cu*/bin/nvcc.
+
+    This works even when running inside pip's isolated build environment
+    because we scan the actual site-packages paths rather than relying on
+    importlib (which only sees the isolated env).
+    """
+    search_dirs = site.getsitepackages() + [site.getusersitepackages()]
+    for sp in search_dirs:
+        nvidia_dir = os.path.join(sp, "nvidia")
+        if not os.path.isdir(nvidia_dir):
+            continue
+        cu_dirs = [
+            d
+            for d in os.listdir(nvidia_dir)
+            if d.startswith("cu") and d[2:].isdigit()
+        ]
+        if not cu_dirs:
+            continue
+        # Use the highest versioned directory (e.g., cu13 over cu12)
+        cu_dir = os.path.join(nvidia_dir, sorted(cu_dirs)[-1])
+        nvcc = os.path.join(cu_dir, "bin", "nvcc")
+        if os.path.isfile(nvcc):
+            return cu_dir
+    return None
+
+
 def main():
     result = {}
     # nvidia-cuda-nvcc (v13+) installs nvcc under nvidia/cu<ver>/bin/
-    spec = importlib.util.find_spec("nvidia.cuda_nvcc")
-    if spec is None:
+    cu_dir = _find_nvidia_cu_dir()
+    if cu_dir is None:
         sys.exit(1)
-    nvidia_dir = os.path.dirname(spec.submodule_search_locations[0])
-    # Find the cu* directory (e.g., cu13)
-    cu_dirs = [
-        d for d in os.listdir(nvidia_dir) if d.startswith("cu") and d[2:].isdigit()
-    ]
-    if not cu_dirs:
-        sys.exit(1)
-    # Use the highest versioned directory (e.g., cu13 over cu12)
-    cu_dir = os.path.join(nvidia_dir, sorted(cu_dirs)[-1])
     nvcc = os.path.join(cu_dir, "bin", "nvcc")
     if not os.path.isfile(nvcc):
         sys.exit(1)
