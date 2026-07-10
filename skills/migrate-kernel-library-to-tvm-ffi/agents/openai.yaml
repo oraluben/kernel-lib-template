@@ -1,0 +1,4 @@
+interface:
+  display_name: "Migrate Kernel Library to TVM FFI"
+  short_description: "Audit and migrate CUDA operator libraries to TVM FFI"
+  default_prompt: "Use $migrate-kernel-library-to-tvm-ffi to assess and migrate this CUDA operator library while preserving its Python API and build behavior."
