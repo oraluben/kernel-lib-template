@@ -1,30 +1,10 @@
-from importlib.util import find_spec
+from importlib.util import find_spec as _find_spec
 
-if find_spec(__name__ + "._stable") is None:
-    from ._tvm_impl import add, empty_like
+if _find_spec(__name__ + "._stable") is not None:
+    from ._stable_impl import add, empty_like, interop_info, roundtrip, sum
+
+    __all__ = ["add", "empty_like", "interop_info", "roundtrip", "sum"]
 else:
-    import torch
+    from ._tvm_impl import add, empty_like
 
-    from ._stable import Runtime
-
-    _runtime = Runtime()
-
-    def add(tensor):
-        """Increment a contiguous float32 CUDA tensor in place, without autograd."""
-        if tensor.requires_grad:
-            raise RuntimeError("klib.add is an inference-only kernel")
-        _runtime.add(tensor)
-        torch.autograd.graph.increment_version(tensor)
-
-    def empty_like(tensor):
-        """Allocate a tensor preserving shape, strides, dtype and device."""
-        return _runtime.empty_like(tensor)
-
-    def sum(tensor):
-        return _runtime.sum(tensor)
-
-    def roundtrip(tensor):
-        return _runtime.roundtrip(tensor)
-
-    def interop_info():
-        return _runtime.info()
+    __all__ = ["add", "empty_like"]
