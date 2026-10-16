@@ -4,28 +4,20 @@ option(KLIB_WITH_CUDA "Build the optional CUDA add kernel" ON)
 find_package(Python 3.12 REQUIRED COMPONENTS
   Interpreter Development.Module Development.SABIModule
 )
-execute_process(
-  COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
-  OUTPUT_VARIABLE nanobind_DIR
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-  COMMAND_ERROR_IS_FATAL ANY
-)
+# scikit-build-core adds build dependencies to CMake's search path.
 find_package(nanobind CONFIG REQUIRED)
 
+# TorchConfig.cmake loads full LibTorch dependencies, including CUDA discovery
+# for CUDA wheels. Query the build Python instead; the core needs only torch_cpu.
 execute_process(
-  COMMAND "${Python_EXECUTABLE}" -c [=[
-import json
-from pathlib import Path
-import torch
-
-print(json.dumps({"root": str(Path(torch.__file__).parent), "version": torch.__version__}))
-]=]
+  COMMAND "${Python_EXECUTABLE}" -c
+    "import torch; print(torch.__path__[0], torch.__version__, sep=';')"
   OUTPUT_VARIABLE TORCH_BUILD_INFO
   OUTPUT_STRIP_TRAILING_WHITESPACE
   COMMAND_ERROR_IS_FATAL ANY
 )
-string(JSON TORCH_ROOT GET "${TORCH_BUILD_INFO}" root)
-string(JSON TORCH_BUILD_VERSION GET "${TORCH_BUILD_INFO}" version)
+list(GET TORCH_BUILD_INFO 0 TORCH_ROOT)
+list(GET TORCH_BUILD_INFO 1 TORCH_BUILD_VERSION)
 if(TORCH_BUILD_VERSION VERSION_LESS "2.14")
   message(FATAL_ERROR "Building klib requires Torch >= 2.14; the runtime ABI target remains Torch 2.13")
 endif()

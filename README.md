@@ -13,6 +13,8 @@ Build a Linux kernel library for **Torch >= 2.13 and GIL-enabled CPython >= 3.12
 
 `pyproject.toml` declares the build and runtime requirements separately. CMake also checks the installed build-time Torch, including when build isolation is disabled. Building with newer headers does not permit directly linking newer Torch functions while retaining the 2.13 runtime floor.
 
+The build queries the selected Python once for Torch's location and version, then links only `torch_cpu`. It avoids `find_package(Torch)` because that loads the full LibTorch dependency configuration: with a CUDA-enabled Torch installation, even a CPU-only extension would need CUDA toolkit discovery. This choice keeps build dependencies minimal; ABI compatibility still depends on using only stable APIs. Nanobind is found directly through the CMake search paths supplied by scikit-build-core.
+
 ## Build and install
 
 For a build with isolation, pip installs the declared build dependencies:
