@@ -1,0 +1,37 @@
+set(CMAKE_CXX_STANDARD 20)
+option(KLIB_WITH_CUDA "Build the optional CUDA add kernel" ON)
+find_package(Python 3.12 COMPONENTS Interpreter Development.Module Development.SABIModule REQUIRED)
+execute_process(COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
+  OUTPUT_VARIABLE nanobind_DIR OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+find_package(nanobind CONFIG REQUIRED)
+execute_process(COMMAND "${Python_EXECUTABLE}" -c "import pathlib,torch; print(pathlib.Path(torch.__file__).parent)"
+  OUTPUT_VARIABLE TORCH_ROOT OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+execute_process(COMMAND "${Python_EXECUTABLE}" -c "import torch; print(torch.__version__)"
+  OUTPUT_VARIABLE TORCH_BUILD_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+if(TORCH_BUILD_VERSION VERSION_LESS "2.14")
+  message(FATAL_ERROR "Building klib requires Torch >= 2.14; the runtime ABI target remains Torch 2.13")
+endif()
+find_library(TORCH_CPU torch_cpu PATHS "${TORCH_ROOT}/lib" NO_DEFAULT_PATH REQUIRED)
+nanobind_add_module(_stable NB_STATIC STABLE_ABI NOMINSIZE klib/ops/stable/bindings.cc)
+target_include_directories(_stable PRIVATE "${TORCH_ROOT}/include" "${PROJECT_SOURCE_DIR}/compat")
+target_link_libraries(_stable PRIVATE ${TORCH_CPU} ${CMAKE_DL_LIBS})
+# Link only the Torch 2.13 stable ABI; resolve 2.14 Tensor conversion with dlsym.
+target_compile_definitions(_stable PRIVATE TORCH_TARGET_VERSION=0x020d000000000000
+  KLIB_BUILD_TORCH="${TORCH_BUILD_VERSION}")
+target_compile_options(_stable PRIVATE -O3)
+set_target_properties(_stable PROPERTIES INSTALL_RPATH "$ORIGIN/../torch/lib" INSTALL_RPATH_USE_LINK_PATH FALSE)
+install(TARGETS _stable LIBRARY DESTINATION klib)
+
+if(KLIB_WITH_CUDA)
+  include("${CMAKE_CURRENT_LIST_DIR}/FindPipCUDAToolkit.cmake")
+  if(NOT CMAKE_CUDA_COMPILER AND CUDAToolkit_NVCC_EXECUTABLE)
+    set(CMAKE_CUDA_COMPILER "${CUDAToolkit_NVCC_EXECUTABLE}" CACHE FILEPATH "CUDA compiler" FORCE)
+  endif()
+  enable_language(CUDA)
+  if(NOT CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES 80 86 89 90)
+  endif()
+  add_library(_cuda_add SHARED klib/ops/stable/cuda_add.cu)
+  set_target_properties(_cuda_add PROPERTIES PREFIX "" CUDA_RUNTIME_LIBRARY Static)
+  install(TARGETS _cuda_add LIBRARY DESTINATION klib)
+endif()

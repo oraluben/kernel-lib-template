@@ -1,28 +1,31 @@
-from functools import lru_cache
+from importlib.util import find_spec
 from pathlib import Path
 
-import tvm_ffi
+if find_spec(__name__ + "._stable") is None:
+    from ._tvm_impl import add, empty_like
+else:
+    import torch
 
+    from ._stable import Runtime
 
-LIB_ROOT = Path(__file__).parent.parent / "build"
-if not LIB_ROOT.exists():
-    LIB_ROOT = Path(__file__).parent / "ops"
+    _runtime = Runtime(str(Path(__file__).parent / "_cuda_add.so"))
 
+    def add(tensor):
+        """Increment a contiguous float32 CPU/CUDA tensor in place, without autograd."""
+        if tensor.requires_grad:
+            raise RuntimeError("klib.add is an inference-only kernel")
+        _runtime.add(tensor)
+        torch.autograd.graph.increment_version(tensor)
 
-@lru_cache(maxsize=0)
-def load_ffi_lib(name: str):
-    """
-    libraries would be in `<repo>/build` or `<site-packages>/klib/ops`.
+    def empty_like(tensor):
+        """Allocate a tensor preserving shape, strides, dtype and device."""
+        return _runtime.empty_like(tensor)
 
-    """
-    p = Path(name)
+    def sum(tensor):
+        return _runtime.sum(tensor)
 
-    return tvm_ffi.load_module(LIB_ROOT / p.name)
+    def roundtrip(tensor):
+        return _runtime.roundtrip(tensor)
 
-
-def add(i):
-    load_ffi_lib("add_ffi.so").add(i)
-
-
-def empty_like(t):
-    return load_ffi_lib("alloc_ffi.so").empty_like(t)
+    def interop_info():
+        return _runtime.info()
