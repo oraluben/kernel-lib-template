@@ -14,16 +14,15 @@ namespace nb = nanobind;
 using Tensor = torch::stable::Tensor;
 using Library = std::unique_ptr<void, decltype(&dlclose)>;
 
+extern "C" int klib_cuda_add(float* data, int64_t count, void* stream);
+
 class Runtime {
   using From = int32_t (*)(void*, AtenTensorHandle*);
   using To = int32_t (*)(AtenTensorHandle, void*, void**);
-  using Launch = int (*)(float*, int64_t, void*);
-  Library torch_library_{nullptr, dlclose}, cuda_library_{nullptr, dlclose};
+  Library torch_library_{nullptr, dlclose};
   Torch213Conversion compat_;
   From official_from_ = nullptr;
   To official_to_ = nullptr;
-  Launch cuda_add_ = nullptr;
-  std::string cuda_path_;
 
   [[noreturn]] static void fail(const char* message) {
     if (PyErr_Occurred()) throw nb::python_error();
@@ -44,7 +43,7 @@ class Runtime {
   }
 
  public:
-  explicit Runtime(std::string cuda_path) : cuda_path_(std::move(cuda_path)) {
+  Runtime() {
     auto torch = nb::module_::import_("torch");
     unsigned major = 0, minor = 0;
     std::sscanf(nb::str(torch.attr("__version__")).c_str(), "%u.%u", &major, &minor);
@@ -70,7 +69,6 @@ class Runtime {
     result["target_torch"] = "2.13";
     result["backend_loaded"] = false;
     result["binding"] = "nanobind_linked_abi3";
-    result["cuda_plugin_loaded"] = cuda_add_ != nullptr;
     return result;
   }
   nb::object roundtrip(nb::handle input) const { return to(from(input)); }
@@ -91,34 +89,19 @@ class Runtime {
   }
   void add(nb::handle input) {
     auto tensor = from(input);
-    if (tensor.layout() != torch::headeronly::Layout::Strided || !tensor.is_contiguous() ||
+    if (!tensor.is_cuda() || tensor.layout() != torch::headeronly::Layout::Strided || !tensor.is_contiguous() ||
         tensor.scalar_type() != torch::headeronly::ScalarType::Float)
-      throw std::invalid_argument("add requires a contiguous float32 tensor");
-    int64_t count = tensor.numel();
-    auto* data = tensor.mutable_data_ptr<float>();
-    if (tensor.is_cpu()) {
-      nb::gil_scoped_release release;
-      for (int64_t i = 0; i < count; ++i) data[i] += 1;
-    } else if (tensor.is_cuda()) {
-      if (!cuda_add_) {
-        cuda_library_.reset(dlopen(cuda_path_.c_str(), RTLD_NOW | RTLD_LOCAL));
-        if (!cuda_library_) throw std::runtime_error(dlerror());
-        cuda_add_ = reinterpret_cast<Launch>(dlsym(cuda_library_.get(), "klib_cuda_add"));
-        if (!cuda_add_) throw std::runtime_error("CUDA plugin missing klib_cuda_add");
-      }
-      torch::stable::accelerator::DeviceGuard guard(tensor.get_device_index());
-      auto stream = torch::stable::accelerator::getCurrentStream(tensor.get_device_index());
-      int status = cuda_add_(data, count, stream.nativeHandle());
-      if (status) throw std::runtime_error("CUDA kernel launch failed: " + std::to_string(status));
-    } else {
-      throw std::invalid_argument("The add kernel supports CPU and CUDA only");
-    }
+      throw std::invalid_argument("add requires a contiguous float32 CUDA tensor");
+    torch::stable::accelerator::DeviceGuard guard(tensor.get_device_index());
+    auto stream = torch::stable::accelerator::getCurrentStream(tensor.get_device_index());
+    int status = klib_cuda_add(tensor.mutable_data_ptr<float>(), tensor.numel(), stream.nativeHandle());
+    if (status) throw std::runtime_error("CUDA kernel launch failed: " + std::to_string(status));
   }
 };
 
 NB_MODULE(_stable, m) {
   nb::class_<Runtime>(m, "Runtime")
-    .def(nb::init<std::string>())
+    .def(nb::init<>())
     .def("info", &Runtime::info)
     .def("roundtrip", &Runtime::roundtrip)
     .def("sum", &Runtime::sum)

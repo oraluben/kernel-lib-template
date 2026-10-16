@@ -7,8 +7,9 @@ import subprocess
 import sys
 
 import torch
-if os.environ.get("KLIB_TEST_NPU") == "1":
-    import torch_npu
+
+if not torch.cuda.is_available():
+    raise RuntimeError("The kernel tests require a CUDA-enabled Torch and a GPU")
 
 BLOCKED = {"nanobind_backend", "_klib_torch213", "tvm_ffi"}
 
@@ -53,12 +54,17 @@ import klib
 x = torch.arange(7, dtype=torch.float32)
 assert klib.sum(x).item() == 21
 assert not any(name in sys.modules for name in names)
-assert not klib.interop_info()["cuda_plugin_loaded"]
 print("backend absence contract passed")
 '''
         proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60,
                               cwd=os.path.dirname(os.path.dirname(klib.__file__)))
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+
+    def test_add_rejects_cpu(self):
+        value = torch.zeros(7)
+        with self.assertRaisesRegex(ValueError, "CUDA tensor"):
+            klib.add(value)
+        self.assertEqual(value, torch.zeros_like(value))
 
     def test_aoti_only_required_on_213(self):
         code = r'''
@@ -84,8 +90,6 @@ else:
 class TestOperators(TestCase):
     @parametrize("size", [0, 1, 255, 256, 257, 1025])
     def test_add_and_bounds(self, device, size):
-        if torch.device(device).type == "npu":
-            self.skipTest("Template add kernel targets CPU/CUDA")
         storage = torch.full((size + 32,), -7.0, device=device)
         value = storage[16:16 + size]
         value.copy_(torch.arange(size, dtype=torch.float32, device=device))
@@ -153,8 +157,6 @@ class TestOperators(TestCase):
         self.assertEqual(klib.sum(value), value.sum())
 
     def test_mutation_version_detected(self, device):
-        if torch.device(device).type == "npu":
-            self.skipTest("Template add kernel targets CPU/CUDA")
         value = torch.ones(7, device=device, requires_grad=True)
         scale = torch.ones_like(value)
         output = (value * scale).sum()
@@ -163,23 +165,18 @@ class TestOperators(TestCase):
             output.backward()
 
     def test_nondefault_stream(self, device):
-        kind = torch.device(device).type
-        if kind == "cpu":
-            self.skipTest("CPU has no device stream")
-        runtime = getattr(torch, kind)
-        stream = runtime.Stream()
-        with runtime.stream(stream):
+        stream = torch.cuda.Stream()
+        with torch.cuda.stream(stream):
             value = torch.ones(257, device=device)
-            if kind == "cuda":
-                klib.add(value)
+            klib.add(value)
             result = klib.sum(value)
             output = klib.empty_like(value)
             output.copy_(value)
-        runtime.current_stream().wait_stream(stream)
-        self.assertEqual(result, torch.tensor(514.0 if kind == "cuda" else 257.0, device=device))
+        torch.cuda.current_stream().wait_stream(stream)
+        self.assertEqual(result, torch.tensor(514.0, device=device))
         self.assertEqual(output, value)
 
 
-instantiate_device_type_tests(TestOperators, globals(), only_for=("cpu", "cuda", "npu"))
+instantiate_device_type_tests(TestOperators, globals(), only_for="cuda")
 if __name__ == "__main__":
     run_tests()

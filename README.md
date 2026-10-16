@@ -1,6 +1,6 @@
 # Kernel library template
 
-Build a Linux kernel library for **Torch >= 2.13 and GIL-enabled CPython >= 3.12**. The default implementation uses nanobind's statically linked stable ABI mode and the stable LibTorch API. One wheel per architecture supports the tested Torch/Python versions without a separate binding or Torch compatibility backend package.
+Build a Linux CUDA kernel library for **Torch >= 2.13 and GIL-enabled CPython >= 3.12**. The default implementation uses nanobind's statically linked stable ABI mode and the stable LibTorch API. One wheel per architecture supports the tested Torch/Python versions without a separate binding or Torch compatibility backend package.
 
 ## Build and runtime versions
 
@@ -13,34 +13,30 @@ Build a Linux kernel library for **Torch >= 2.13 and GIL-enabled CPython >= 3.12
 
 `pyproject.toml` declares the build and runtime requirements separately. CMake also checks the installed build-time Torch, including when build isolation is disabled. Building with newer headers does not permit directly linking newer Torch functions while retaining the 2.13 runtime floor.
 
-The build queries the selected Python once for Torch's location and version, then links only `torch_cpu`. It avoids `find_package(Torch)` because that loads the full LibTorch dependency configuration: with a CUDA-enabled Torch installation, even a CPU-only extension would need CUDA toolkit discovery. This choice keeps build dependencies minimal; ABI compatibility still depends on using only stable APIs. Nanobind is found directly through the CMake search paths supplied by scikit-build-core.
+The build uses `find_package(Torch 2.14 REQUIRED)` and links the `torch_cpu` library file without inheriting the full Torch target's dependencies. The CUDA kernel and launcher live together in `klib/ops/add/add_kernel.cu` and compile directly into `_stable.abi3.so`, with a static CUDA runtime. There is no separate kernel plugin or runtime kernel loader. ABI compatibility still depends on using only stable Torch and CPython APIs.
 
 ## Build and install
 
-For a build with isolation, pip installs the declared build dependencies:
+Install a CUDA toolkit with `nvcc` on `PATH` (or set `CUDACXX=/path/to/nvcc`), a C++20 compiler and CMake >= 3.27. For a build with isolation, pip installs the declared Python build dependencies:
 
 ```bash
-python -m pip wheel . -w wheelhouse -Ccmake.define.KLIB_WITH_CUDA=OFF
+python -m pip wheel . -w wheelhouse
 ```
 
-To use an existing environment, install Torch >= 2.14, `nanobind==3.1.0`, `scikit-build-core`, a C++20 compiler and CMake >= 3.27, then build:
+To use an existing environment, install CUDA-enabled Torch >= 2.14, `nanobind==3.1.0` and `scikit-build-core`, then build:
+
+```bash
+python -m pip wheel . --no-build-isolation --no-deps -w wheelhouse
+```
+
+The default CUDA architectures are `8.0;8.6;8.9;9.0+PTX`. Override them through `TORCH_CUDA_ARCH_LIST`, which TorchConfig uses instead of `CMAKE_CUDA_ARCHITECTURES`:
 
 ```bash
 python -m pip wheel . --no-build-isolation --no-deps -w wheelhouse \
-  -Ccmake.define.KLIB_WITH_CUDA=OFF
+  '-Ccmake.define.TORCH_CUDA_ARCH_LIST=9.0+PTX'
 ```
 
-Include the CUDA add kernel with a host or pip CUDA toolchain:
-
-```bash
-python -m pip wheel . --no-build-isolation --no-deps -w wheelhouse \
-  -Ccmake.define.KLIB_WITH_CUDA=ON \
-  '-Ccmake.define.CMAKE_CUDA_ARCHITECTURES=80;86;89;90'
-```
-
-`WITH_PIP_CUDA_TOOLCHAIN` can point to a pip CUDA toolchain directory. The CUDA plugin statically links cudart and loads only when calling CUDA add, so CPU-only Torch can load the same wheel without loading that plugin.
-
-In a target environment with Torch already installed:
+In a target environment with CUDA-enabled Torch already installed:
 
 ```bash
 python -m pip install --no-deps /path/to/klib-0.1.0-cp312-abi3-linux_x86_64.whl
@@ -62,7 +58,7 @@ The input function allocates a Tensor handle owned by `torch::stable::Tensor`. D
 import torch
 import klib
 
-x = torch.zeros(257, device="cuda")  # CPU also works
+x = torch.zeros(257, device="cuda")
 klib.add(x)
 assert torch.equal(x, torch.ones_like(x))
 assert klib.sum(x).item() == 257
@@ -74,12 +70,12 @@ assert y.stride() == view.stride()
 print(klib.interop_info())
 ```
 
-- `add`: increments a contiguous float32 CPU/CUDA tensor in place. It rejects inputs requiring gradients and increments the version counter so existing autograd graphs can detect mutation. The CUDA kernel checks bounds, including for empty and partial-block inputs.
+- `add`: increments a contiguous float32 CUDA tensor in place. It rejects other devices and inputs requiring gradients, and increments the version counter so existing autograd graphs can detect mutation. The CUDA kernel checks bounds, including for empty and partial-block inputs.
 - `empty_like`: preserves exact shape, strides, dtype and device, including layouts with gaps. It does not copy values or `requires_grad`.
 - `sum`: uses `torch::stable::sum` and its native autograd behavior.
 - `roundtrip`: converts a Tensor to a stable handle and back, preserving identity without copying device data.
 
-NPU environments can use conversion, allocation and stable sum through the installed `torch_npu`; the template has no NPU add kernel. Custom autograd nodes, `record_stream`, custom Tensor subclasses, multi-GPU and `torch.compile` are outside the tested scope. Non-default-stream tests retain tensors until synchronization.
+The template targets CUDA kernels. Other kernel backends, custom autograd nodes, `record_stream`, custom Tensor subclasses, multi-GPU and `torch.compile` are outside the tested scope. Non-default-stream tests retain tensors until synchronization.
 
 ## Validate a wheel
 
@@ -90,7 +86,7 @@ python tests/check_wheel.py wheelhouse/klib-0.1.0-cp312-abi3-linux_x86_64.whl
 abi3audit --strict --report wheelhouse/klib-0.1.0-cp312-abi3-linux_x86_64.whl
 ```
 
-The tests use PyTorch's internal test utilities; install their test dependencies (including `expecttest`) in the test environment. Set `KLIB_TEST_NPU=1` in a prepared NPU environment. The wheel runner extracts into a temporary directory, checks package metadata and the loaded extension hash, and runs tests while prohibiting backend imports.
+The tests require a GPU, CUDA-enabled Torch and PyTorch's internal test dependencies (including `expecttest`). The wheel runner extracts into a temporary directory, checks the package metadata, single-extension layout and loaded extension hash, and runs tests while prohibiting backend imports.
 
 Tests cover conversion ownership and identity, invalid inputs, exact-stride allocation, sum gradients, mutation detection, kernel bounds and non-default streams. Removing the private conversion functions must break the 2.13 path while leaving the 2.14+ path operational.
 

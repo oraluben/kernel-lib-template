@@ -15,6 +15,7 @@ args = parser.parse_args()
 wheel = args.wheel.resolve()
 with zipfile.ZipFile(wheel) as archive, tempfile.TemporaryDirectory(prefix="klib-wheel-") as directory:
     names = archive.namelist()
+    assert [name for name in names if name.endswith(".so")] == ["klib/_stable.abi3.so"]
     metadata = Parser().parsestr(archive.read(next(n for n in names if n.endswith(".dist-info/METADATA"))).decode())
     assert metadata["Requires-Python"] == ">=3.12"
     assert "torch>=2.13" in metadata.get_all("Requires-Dist", [])

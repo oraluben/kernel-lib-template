@@ -1,66 +1,31 @@
-option(KLIB_WITH_CUDA "Build the optional CUDA add kernel" ON)
-
-# Build dependencies: Python 3.12+, nanobind and Torch 2.14+ headers.
 find_package(Python 3.12 REQUIRED COMPONENTS
   Interpreter Development.Module Development.SABIModule
 )
-# scikit-build-core adds build dependencies to CMake's search path.
 find_package(nanobind CONFIG REQUIRED)
 
-# TorchConfig.cmake loads full LibTorch dependencies, including CUDA discovery
-# for CUDA wheels. Query the build Python instead; the core needs only torch_cpu.
-execute_process(
-  COMMAND "${Python_EXECUTABLE}" -c
-    "import torch; print(torch.__path__[0], torch.__version__, sep=';')"
-  OUTPUT_VARIABLE TORCH_BUILD_INFO
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-  COMMAND_ERROR_IS_FATAL ANY
-)
-list(GET TORCH_BUILD_INFO 0 TORCH_ROOT)
-list(GET TORCH_BUILD_INFO 1 TORCH_BUILD_VERSION)
-if(TORCH_BUILD_VERSION VERSION_LESS "2.14")
-  message(FATAL_ERROR "Building klib requires Torch >= 2.14; the runtime ABI target remains Torch 2.13")
+# TorchConfig manages CUDA code generation through TORCH_CUDA_ARCH_LIST.
+if(NOT DEFINED TORCH_CUDA_ARCH_LIST AND "$ENV{TORCH_CUDA_ARCH_LIST}" STREQUAL "")
+  set(TORCH_CUDA_ARCH_LIST "8.0;8.6;8.9;9.0+PTX" CACHE STRING "CUDA architectures")
 endif()
+find_package(Torch 2.14 REQUIRED)
 
-# Core extension: CPython abi3 (3.12+) and the Torch 2.13 stable ABI.
-# Link only torch_cpu so the wheel also loads with CPU-only Torch.
-find_library(TORCH_CPU_LIBRARY torch_cpu
-  PATHS "${TORCH_ROOT}/lib"
-  NO_DEFAULT_PATH NO_CACHE REQUIRED
+nanobind_add_module(_stable NB_STATIC STABLE_ABI NOMINSIZE
+  klib/ops/stable/bindings.cc
+  klib/ops/add/add_kernel.cu
 )
-nanobind_add_module(_stable NB_STATIC STABLE_ABI NOMINSIZE klib/ops/stable/bindings.cc)
 target_compile_features(_stable PRIVATE cxx_std_20)
-target_include_directories(_stable PRIVATE "${TORCH_ROOT}/include" "${PROJECT_SOURCE_DIR}/compat")
-target_link_libraries(_stable PRIVATE "${TORCH_CPU_LIBRARY}" ${CMAKE_DL_LIBS})
-# Newer headers are allowed, but direct API calls must stay within Torch 2.13.
-# bindings.cc resolves the Torch 2.14 Tensor conversion functions with dlsym.
+target_include_directories(_stable PRIVATE ${TORCH_INCLUDE_DIRS} "${PROJECT_SOURCE_DIR}/compat")
+target_link_libraries(_stable PRIVATE "$<TARGET_FILE:torch_cpu>" ${CMAKE_DL_LIBS})
+# Build with 2.14+ headers, but keep direct Torch calls within the 2.13 ABI.
+# bindings.cc resolves the 2.14 Tensor conversion functions with dlsym.
 target_compile_definitions(_stable PRIVATE
   TORCH_TARGET_VERSION=0x020d000000000000 # 2.13.0
-  KLIB_BUILD_TORCH="${TORCH_BUILD_VERSION}"
+  KLIB_BUILD_TORCH="${Torch_VERSION}"
 )
 target_compile_options(_stable PRIVATE -O3)
 set_target_properties(_stable PROPERTIES
+  CUDA_RUNTIME_LIBRARY Static
   INSTALL_RPATH "$ORIGIN/../torch/lib"
   INSTALL_RPATH_USE_LINK_PATH FALSE
 )
 install(TARGETS _stable LIBRARY DESTINATION klib)
-
-# Optional CUDA plugin: loaded by bindings.cc only when CUDA add is called.
-if(KLIB_WITH_CUDA)
-  include("${CMAKE_CURRENT_LIST_DIR}/FindPipCUDAToolkit.cmake")
-  if(NOT CMAKE_CUDA_COMPILER AND CUDAToolkit_NVCC_EXECUTABLE)
-    set(CMAKE_CUDA_COMPILER "${CUDAToolkit_NVCC_EXECUTABLE}" CACHE FILEPATH "CUDA compiler" FORCE)
-  endif()
-  # Set defaults before compiler detection, respecting -D and CUDAARCHS overrides.
-  if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES AND "$ENV{CUDAARCHS}" STREQUAL "")
-    set(CMAKE_CUDA_ARCHITECTURES 80 86 89 90 CACHE STRING "CUDA architectures")
-  endif()
-  enable_language(CUDA)
-
-  add_library(_cuda_add SHARED klib/ops/stable/cuda_add.cu)
-  set_target_properties(_cuda_add PROPERTIES
-    PREFIX ""
-    CUDA_RUNTIME_LIBRARY Static
-  )
-  install(TARGETS _cuda_add LIBRARY DESTINATION klib)
-endif()

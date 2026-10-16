@@ -1,5 +1,4 @@
 from importlib.util import find_spec
-from pathlib import Path
 
 if find_spec(__name__ + "._stable") is None:
     from ._tvm_impl import add, empty_like
@@ -8,10 +7,10 @@ else:
 
     from ._stable import Runtime
 
-    _runtime = Runtime(str(Path(__file__).parent / "_cuda_add.so"))
+    _runtime = Runtime()
 
     def add(tensor):
-        """Increment a contiguous float32 CPU/CUDA tensor in place, without autograd."""
+        """Increment a contiguous float32 CUDA tensor in place, without autograd."""
         if tensor.requires_grad:
             raise RuntimeError("klib.add is an inference-only kernel")
         _runtime.add(tensor)
