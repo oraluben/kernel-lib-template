@@ -1,28 +1,10 @@
-from functools import lru_cache
-from pathlib import Path
+from importlib.util import find_spec as _find_spec
 
-import tvm_ffi
+if _find_spec(__name__ + "._stable") is not None:
+    from ._stable_impl import add, empty_like, interop_info, roundtrip, sum
 
+    __all__ = ["add", "empty_like", "interop_info", "roundtrip", "sum"]
+else:
+    from ._tvm_impl import add, empty_like
 
-LIB_ROOT = Path(__file__).parent.parent / "build"
-if not LIB_ROOT.exists():
-    LIB_ROOT = Path(__file__).parent / "ops"
-
-
-@lru_cache(maxsize=0)
-def load_ffi_lib(name: str):
-    """
-    libraries would be in `<repo>/build` or `<site-packages>/klib/ops`.
-
-    """
-    p = Path(name)
-
-    return tvm_ffi.load_module(LIB_ROOT / p.name)
-
-
-def add(i):
-    load_ffi_lib("add_ffi.so").add(i)
-
-
-def empty_like(t):
-    return load_ffi_lib("alloc_ffi.so").empty_like(t)
+    __all__ = ["add", "empty_like"]

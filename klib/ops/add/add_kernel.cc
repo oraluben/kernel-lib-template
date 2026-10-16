@@ -12,6 +12,7 @@ void add_kernel(const tvm::ffi::TensorView &input) {
   static auto kernel = TVM_FFI_EMBED_CUBIN_GET_KERNEL(env, "AddOneKernel");
 
   int64_t n = input.numel();
+  if (n == 0) return;
   tvm::ffi::dim3 grid((n + 255) / 256);
   tvm::ffi::dim3 block(256);
 
@@ -19,7 +20,7 @@ void add_kernel(const tvm::ffi::TensorView &input) {
       TVM_FFI_GET_CUDA_STREAM(input));
 
   void *input_ptr = input.data_ptr();
-  void *args[] = {&input_ptr};
+  void *args[] = {&input_ptr, &n};
   tvm::ffi::cuda_api::ResultType result =
       kernel.Launch(args, grid, block, stream);
   TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(result);

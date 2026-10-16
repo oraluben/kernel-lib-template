@@ -1,5 +1,15 @@
 cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
 
+set(KLIB_IMPL "stable" CACHE STRING "Binding implementation: stable or tvm_ffi")
+set_property(CACHE KLIB_IMPL PROPERTY STRINGS stable tvm_ffi)
+if(KLIB_IMPL STREQUAL "stable")
+  project(klib LANGUAGES CXX CUDA)
+  include(cmake/StableTorch.cmake)
+  return()
+elseif(NOT KLIB_IMPL STREQUAL "tvm_ffi")
+  message(FATAL_ERROR "Unknown KLIB_IMPL: ${KLIB_IMPL}")
+endif()
+
 # Detect CUDA toolkit: tries host installation first, then falls back to
 # pip-installed packages (env WITH_PIP_CUDA_TOOLCHAIN or auto-detect).
 # Must be included before project() so CMAKE_CUDA_COMPILER is set.
